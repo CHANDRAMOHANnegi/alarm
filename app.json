@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "Aura Clock",
+    "slug": "aura-clock-rn",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.aura.clock"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#12111F"
+      },
+      "package": "com.aura.clock"
+    },
+    "plugins": [
+      "expo-notifications"
+    ]
+  }
+}
