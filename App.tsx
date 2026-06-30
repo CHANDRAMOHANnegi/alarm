@@ -596,6 +596,50 @@ export default function App() {
     await AppUsage.openUsageAccessSettings();
   };
 
+  const addDailyTask = async () => {
+    const title = newTaskTitle.trim();
+    if (!title) return;
+
+    const task: DailyTask = {
+      id: `${Date.now()}`,
+      title,
+      category: newTaskCategory.trim() || 'Personal',
+      active: true,
+      createdAt: new Date().toISOString(),
+      completedDates: []
+    };
+    const updated = [task, ...dailyTasks];
+    setDailyTasks(updated);
+    await saveJson(STORAGE_KEYS.dailyTasks, updated);
+    setNewTaskTitle('');
+    setNewTaskCategory('Personal');
+  };
+
+  const toggleDailyTask = async (taskId: string) => {
+    const today = isoDate();
+    const updated = dailyTasks.map((task) => {
+      if (task.id !== taskId) return task;
+      const done = task.completedDates.includes(today);
+      return {
+        ...task,
+        completedDates: done
+          ? task.completedDates.filter((date) => date !== today)
+          : [today, ...task.completedDates]
+      };
+    });
+
+    setDailyTasks(updated);
+    await saveJson(STORAGE_KEYS.dailyTasks, updated);
+  };
+
+  const archiveDailyTask = async (taskId: string) => {
+    const updated = dailyTasks.map((task) =>
+      task.id === taskId ? { ...task, active: false } : task
+    );
+    setDailyTasks(updated);
+    await saveJson(STORAGE_KEYS.dailyTasks, updated);
+  };
+
   const scheduleAlarm = async () => {
     const fireAt = parseAlarmTime(alarmTime);
     if (!fireAt) {
@@ -790,13 +834,25 @@ export default function App() {
             stats={[
               { label: 'Plan streak', value: planningStreak },
               { label: 'Retro streak', value: retroStreak },
-              { label: 'Active alarms', value: activeAlarms.length }
+              { label: 'Task streak', value: bestTaskStreak }
             ]}
           />
           <View style={styles.insightGrid}>
             <InsightCard label="Avg mood" value={averageMood ? `${averageMood}/5` : '—'} />
-            <InsightCard label="Avg energy" value={averageEnergy ? `${averageEnergy}/5` : '—'} />
+            <InsightCard label="Tasks today" value={`${taskCompletionRate}%`} />
           </View>
+          <DailyTasksPanel
+            tasks={activeDailyTasks}
+            completedCount={completedDailyTasks.length}
+            completionRate={taskCompletionRate}
+            newTaskTitle={newTaskTitle}
+            newTaskCategory={newTaskCategory}
+            onChangeTitle={setNewTaskTitle}
+            onChangeCategory={setNewTaskCategory}
+            onAdd={addDailyTask}
+            onToggle={toggleDailyTask}
+            onArchive={archiveDailyTask}
+          />
           <UsagePanel
             entries={appUsage}
             hasAccess={hasUsageAccess}
@@ -875,6 +931,19 @@ export default function App() {
             <Text style={styles.muted}>No active alarms yet.</Text>
           )}
         </View>
+
+        <DailyTasksPanel
+          tasks={activeDailyTasks}
+          completedCount={completedDailyTasks.length}
+          completionRate={taskCompletionRate}
+          newTaskTitle={newTaskTitle}
+          newTaskCategory={newTaskCategory}
+          onChangeTitle={setNewTaskTitle}
+          onChangeCategory={setNewTaskCategory}
+          onAdd={addDailyTask}
+          onToggle={toggleDailyTask}
+          onArchive={archiveDailyTask}
+        />
 
         <UsagePanel
           entries={appUsage}
