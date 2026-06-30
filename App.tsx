@@ -24,7 +24,8 @@ import * as Speech from 'expo-speech';
 const STORAGE_KEYS = {
   alarms: '@aura-clock/alarms',
   plans: '@aura-clock/plans',
-  retros: '@aura-clock/retros'
+  retros: '@aura-clock/retros',
+  dailyTasks: '@aura-clock/daily-tasks'
 } as const;
 
 type StorageKey = (typeof STORAGE_KEYS)[keyof typeof STORAGE_KEYS];
@@ -58,6 +59,15 @@ type JournalEntry = {
   energy?: number;
 };
 
+type DailyTask = {
+  id: string;
+  title: string;
+  category: string;
+  active: boolean;
+  createdAt: string;
+  completedDates: string[];
+};
+
 type ScheduleAlarmInput = {
   alarmId: string;
   label: string;
@@ -89,6 +99,25 @@ const repeatOptions: Array<{ label: string; value: RepeatMode }> = [
 ];
 
 const scoreValues = [1, 2, 3, 4, 5];
+
+const defaultDailyTasks: DailyTask[] = [
+  {
+    id: 'gym',
+    title: 'Go to gym',
+    category: 'Health',
+    active: true,
+    createdAt: new Date(0).toISOString(),
+    completedDates: []
+  },
+  {
+    id: 'system-design',
+    title: 'Learn system design',
+    category: 'Learning',
+    active: true,
+    createdAt: new Date(0).toISOString(),
+    completedDates: []
+  }
+];
 
 const tabs: Tab[] = [
   { id: 'dashboard', label: 'Dashboard', icon: '◎' },
@@ -256,6 +285,30 @@ function countCurrentStreak(entries: JournalEntry[]) {
   return streak;
 }
 
+function countDateStreak(dates: string[]) {
+  const completed = new Set(dates);
+  let cursor = new Date();
+  let streak = 0;
+
+  while (completed.has(isoDate(cursor))) {
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+
+  return streak;
+}
+
+function isTaskDoneToday(task: DailyTask, date = isoDate()) {
+  return task.completedDates.includes(date);
+}
+
+function getTaskCompletionRate(tasks: DailyTask[], date = isoDate()) {
+  const activeTasks = tasks.filter((task) => task.active);
+  if (activeTasks.length === 0) return 0;
+  const completed = activeTasks.filter((task) => isTaskDoneToday(task, date)).length;
+  return Math.round((completed / activeTasks.length) * 100);
+}
+
 function average(values: number[]) {
   if (values.length === 0) return 0;
   return Math.round((values.reduce((total, value) => total + value, 0) / values.length) * 10) / 10;
@@ -287,6 +340,9 @@ export default function App() {
   const [alarms, setAlarms] = useState<Alarm[]>([]);
   const [plans, setPlans] = useState<JournalEntry[]>([]);
   const [retros, setRetros] = useState<JournalEntry[]>([]);
+  const [dailyTasks, setDailyTasks] = useState<DailyTask[]>([]);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [newTaskCategory, setNewTaskCategory] = useState('Personal');
   const [alarmTime, setAlarmTime] = useState('');
   const [alarmLabel, setAlarmLabel] = useState('Morning planning');
   const [alarmRepeat, setAlarmRepeat] = useState<RepeatMode>('once');
@@ -356,10 +412,11 @@ export default function App() {
             options: { isDestructive: true }
           }
         ]);
-        const [savedAlarms, savedPlans, savedRetros] = await Promise.all([
+        const [savedAlarms, savedPlans, savedRetros, savedTasks] = await Promise.all([
           loadJson<Alarm[]>(STORAGE_KEYS.alarms, []),
           loadJson<JournalEntry[]>(STORAGE_KEYS.plans, []),
-          loadJson<JournalEntry[]>(STORAGE_KEYS.retros, [])
+          loadJson<JournalEntry[]>(STORAGE_KEYS.retros, []),
+          loadJson<DailyTask[]>(STORAGE_KEYS.dailyTasks, defaultDailyTasks)
         ]);
         const activeAlarms = normalizeAlarms(savedAlarms);
         if (activeAlarms.length !== savedAlarms.length) {
@@ -368,6 +425,7 @@ export default function App() {
         setAlarms(activeAlarms);
         setPlans(savedPlans);
         setRetros(savedRetros);
+        setDailyTasks(savedTasks);
       } catch (error) {
         Alert.alert('Storage issue', 'Aura Clock could not load saved data.');
       }
@@ -501,6 +559,23 @@ export default function App() {
         retros.map((entry) => entry.energy).filter((value): value is number => typeof value === 'number')
       ),
     [retros]
+  );
+  const activeDailyTasks = useMemo(() => dailyTasks.filter((task) => task.active), [dailyTasks]);
+  const completedDailyTasks = useMemo(
+    () => activeDailyTasks.filter((task) => isTaskDoneToday(task, isoDate(now))),
+    [activeDailyTasks, now]
+  );
+  const taskCompletionRate = useMemo(
+    () => getTaskCompletionRate(dailyTasks, isoDate(now)),
+    [dailyTasks, now]
+  );
+  const bestTaskStreak = useMemo(
+    () =>
+      activeDailyTasks.reduce(
+        (highest, task) => Math.max(highest, countDateStreak(task.completedDates)),
+        0
+      ),
+    [activeDailyTasks]
   );
   const usage = useMemo(() => usageSummary(appUsage), [appUsage]);
 
@@ -1123,7 +1198,7 @@ function UsagePanel({
       </View>
       {entries.slice(0, 5).map((entry, index) => {
         const maxTime = entries[0]?.totalTimeMs || 1;
-        const width = `${Math.max(8, Math.round((entry.totalTimeMs / maxTime) * 100))}%`;
+        const width = `${Math.max(8, Math.round((entry.totalTimeMs / maxTime) * 100))}%` as const;
 
         return (
           <View key={entry.packageName} style={styles.usageRow}>
